@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} - build Roblox scripts{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div>
+    <div class="eyebrow">Luau script workshop</div>
+    <h1>Tick some boxes.<br>Get <span class="grad">working Roblox scripts</span>.</h1>
+    <p class="lede">
+      RobloxForge turns a handful of settings into complete, commented Luau scripts -
+      leaderboards with real DataStore saving, kill bricks, sprint and dash, coin pickups,
+      round systems and more. Then open the editor and make it yours.
+    </p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{{ url_for('pages.builder') }}">Open the builder</a>
+      <a class="btn" href="{{ url_for('pages.snippets') }}">Browse {{ snippet_total }} snippets</a>
+      <a class="btn btn-ghost" href="{{ url_for('pages.editor') }}">Start from a blank script</a>
+    </div>
+    <div class="stat-row" style="margin-top:26px">
+      <div class="stat"><div class="value">{{ feature_total }}</div><div class="label">Generators</div></div>
+      <div class="stat"><div class="value">{{ snippet_total }}</div><div class="label">Snippets</div></div>
+      <div class="stat"><div class="value">{{ categories|length }}</div><div class="label">Categories</div></div>
+      <div class="stat"><div class="value">0</div><div class="label">Dependencies</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="panel-title">
+      <h3>Everything lands in the right place</h3>
+      <span class="pill mint">Rojo ready</span>
+    </div>
+    <p class="small">The builder does not just dump one big file - it splits your project the way Roblox expects, and the
+      download includes a <code>default.project.json</code> so <code>rojo serve</code> works straight away.</p>
+    <pre class="code" style="max-height:none"><span class="tok-com">-- your download</span>
+MyGame/
+├── <span class="tok-str">ReplicatedStorage/Shared/StatsAPI.luau</span>      <span class="tok-com">-- module</span>
+├── <span class="tok-str">ServerScriptService/Features/CoinCollect.server.luau</span>
+├── <span class="tok-str">ServerScriptService/World/KillBrick.server.luau</span>
+├── <span class="tok-str">StarterPlayer/StarterPlayerScripts/Movement/Sprint.client.luau</span>
+├── <span class="tok-str">default.project.json</span>
+└── <span class="tok-str">README.md</span>   <span class="tok-com">-- setup notes per feature</span></pre>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section>
+  <div class="page-head spread">
+    <div>
+      <h2>Generators</h2>
+      <p class="lede">Each one writes real code, not a TODO stub.</p>
+    </div>
+    <a class="btn" href="{{ url_for('pages.builder') }}">See all {{ feature_total }}</a>
+  </div>
+
+  <div class="grid grid-2">
+    {% for feature in featured %}
+      <a class="card card-link" href="{{ url_for('pages.builder', feature=feature.id) }}">
+        <div class="spread" style="margin-bottom:8px">
+          <h3 style="margin:0">{{ feature.name }}</h3>
+          <span class="pill">{{ feature.category }}</span>
+        </div>
+        <p style="margin:0">{{ feature.summary }}</p>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+
+<hr class="divider">
+
+<section class="grid grid-2">
+  <div class="card">
+    <h2 style="margin-bottom:14px">How it works</h2>
+    <div class="step"><span class="num">1</span><div class="body"><strong>Pick features.</strong> Sprint, coins, kill bricks, teams, a round loop - whatever your game needs.</div></div>
+    <div class="step"><span class="num">2</span><div class="body"><strong>Tune the numbers.</strong> Walk speed, coin value, autosave interval, admin UserIds. Every option has a sensible default.</div></div>
+    <div class="step"><span class="num">3</span><div class="body"><strong>Generate.</strong> You get a file tree, a combined preview, and a .zip with a Rojo project file.</div></div>
+    <div class="step"><span class="num">4</span><div class="body"><strong>Edit and save.</strong> Tweak anything in the built-in editor and store it in your project list.</div></div>
+  </div>
+  <div class="card">
+    <h2 style="margin-bottom:14px">Snippet library</h2>
+    <p class="small">Ready-to-paste patterns that answer the questions every Roblox scripter hits:</p>
+    <div class="tag-list" style="margin-bottom:16px">
+      {% for category in snippet_categories %}<span class="pill violet">{{ category }}</span>{% endfor %}
+    </div>
+    <p class="small">Server/client remotes with validation, DataStores with retries, notification toasts, damage numbers,
+      weighted loot rolls, tool melee, countdown timers and a debugging helper.</p>
+    <a class="btn btn-sm" href="{{ url_for('pages.snippets') }}">Open the library</a>
+  </div>
+</section>
+{% endblock %}

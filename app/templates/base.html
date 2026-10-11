@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <meta name="description" content="{% block description %}Build, edit and organise Roblox Luau scripts in your browser. RobloxForge generates ready-to-paste local and server scripts.{% endblock %}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23e2231a'/><text x='16' y='23' font-size='19' font-family='monospace' font-weight='bold' fill='white' text-anchor='middle'>R</text></svg>">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container inner">
+      <a class="brand" href="{{ url_for('pages.home') }}">
+        <span class="mark">R</span>
+        <span>RobloxForge <span class="ver">v{{ app_version }}</span></span>
+      </a>
+      {% set nav = [
+        ('pages.builder', 'Builder'),
+        ('pages.editor', 'Editor'),
+        ('pages.snippets', 'Snippets'),
+        ('pages.projects', 'My projects')
+      ] %}
+      <nav class="nav">
+        {% for endpoint, label in nav %}
+          <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint %}class="active"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </nav>
+      <div class="header-actions">
+        <a class="btn btn-sm" href="{{ url_for('pages.snippets') }}">{{ snippet_count }} snippets</a>
+        <a class="btn btn-sm btn-primary" href="{{ url_for('pages.builder') }}">New script</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container inner">
+      <span>{{ app_name }} v{{ app_version }} &middot; {{ feature_count }} generators &middot; {{ snippet_count }} snippets</span>
+      <span class="faint">Unofficial fan tool. Not affiliated with or endorsed by Roblox Corporation.</span>
+    </div>
+  </footer>
+
+  <div class="flash-area" id="flash-area"></div>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

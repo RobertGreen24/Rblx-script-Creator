@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Editor - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head spread">
+  <div>
+    <div class="eyebrow">Luau editor</div>
+    <h1 id="editor-heading">{{ project['name'] if project else 'Untitled script' }}</h1>
+    <p class="lede small" style="margin:0">
+      Write or paste Luau, then save it to your project list. Tabs indent, Ctrl+S saves,
+      and the analyser on the right flags the usual Roblox footguns.
+    </p>
+  </div>
+  <div class="btn-row">
+    <select id="load-project" style="width:auto; min-width:190px">
+      <option value="">Load a saved project...</option>
+    </select>
+    <button class="btn" id="analyse-btn">Analyse</button>
+    <button class="btn btn-primary" id="save-btn">Save project</button>
+  </div>
+</div>
+
+<div class="split">
+  <!-- ------------------------------------------------------------- editor -->
+  <div style="display:flex; flex-direction:column; gap:14px">
+    <div class="card tight" style="position:sticky; top:80px">
+      <div class="panel-title" style="margin-bottom:10px">
+        <h3 class="small mono" style="margin:0" id="filename-label">script.luau</h3>
+        <span class="pill" id="cursor-pill">Ln 1, Col 1</span>
+      </div>
+
+      <div class="field">
+        <label for="script-type">Script type</label>
+        <select id="script-type">
+          <option value="server" {% if not project or project['script_type'] == 'server' %}selected{% endif %}>Server script (ServerScriptService)</option>
+          <option value="client" {% if project and project['script_type'] == 'client' %}selected{% endif %}>Local script (StarterPlayerScripts)</option>
+          <option value="module" {% if project and project['script_type'] == 'module' %}selected{% endif %}>Module script (ReplicatedStorage)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="project-name">Project name</label>
+        <input type="text" id="project-name" placeholder="My new script"
+               value="{{ project['name'] if project else '' }}">
+      </div>
+
+      <div class="field">
+        <label for="project-desc">Description</label>
+        <input type="text" id="project-desc" placeholder="What does this script do?"
+               value="{{ project['description'] if project else '' }}">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="save-btn-2">Save</button>
+        <button class="btn btn-sm" id="new-btn">New</button>
+        {% if project %}
+          <form method="post" action="{{ url_for('pages.project_delete', project_id=project['id']) }}" style="display:inline"
+                onsubmit="return confirm('Delete this project?')">
+            <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+          </form>
+        {% endif %}
+      </div>
+
+      <hr class="divider" style="margin:14px 0">
+      <div class="small faint">
+        <div class="spread"><span>Lines</span><span class="mono" id="stat-lines">1</span></div>
+        <div class="spread"><span>Characters</span><span class="mono" id="stat-chars">0</span></div>
+        <div class="spread"><span>Functions</span><span class="mono" id="stat-functions">0</span></div>
+        <div class="spread"><span>Saved</span><span class="mono" id="stat-saved">never</span></div>
+      </div>
+    </div>
+
+    <div class="card tight">
+      <div class="panel-title" style="margin-bottom:8px"><h3 class="small">Starter templates</h3></div>
+      <div class="btn-row" id="starter-buttons">
+        {% for name in ['Blank server script', 'Remote event pattern', 'Coin payout on touch', 'Round timer', 'Leaderstats folder'] %}
+          <button class="btn btn-sm" data-starter="{{ loop.index0 }}">{{ name }}</button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card tight" style="padding:0; overflow:hidden">
+      <div class="btn-row" style="padding:10px 12px; border-bottom:1px solid var(--border-soft)">
+        <span class="pill {% if project and project['script_type'] == 'client' %}mint{% elif project and project['script_type'] == 'module' %}violet{% else %}accent{% endif %}" id="type-pill">
+          {{ (project['script_type'] if project else 'server')|title }}
+        </span>
+        <span class="small faint">Tab indents &middot; Ctrl+S saves &middot; Enter keeps your indentation</span>
+        <div class="btn-row" style="margin-left:auto">
+          <button class="btn btn-sm" data-copy="#code-input">Copy all</button>
+          <button class="btn btn-sm" id="format-btn" title="Trim trailing spaces, normalise indentation">Tidy</button>
+        </div>
+      </div>
+      <div class="editor" id="editor">
+        <div class="gutter" id="gutter"><span>1</span></div>
+        <div class="code-layer">
+          <pre class="highlight-layer" id="highlight-layer" aria-hidden="true"></pre>
+          <textarea id="code-input" spellcheck="false" wrap="off"
+                    placeholder="-- Start typing Luau...">{{ project['code'] if project else starter_code }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="panel-title">
+        <h3>Analyser</h3>
+        <span class="pill" id="analyse-pill">not run</span>
+      </div>
+      <div id="analyse-results" class="small faint">Hit <strong>Analyse</strong> for a quick sanity check of your script.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/highlight.js') }}"></script>
+<script>
+  window.RF_PROJECT_ID = {{ project['id'] if project else 'null' }};
+</script>
+<script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+{% endblock %}

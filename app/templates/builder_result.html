@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Generated scripts - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head spread">
+  <div>
+    <div class="eyebrow">Step 2 of 2</div>
+    <h1>{{ config.project_name }}</h1>
+    <p class="lede">{{ scripts|length }} file(s) generated. Copy them one at a time, or download the whole
+      project as a .zip with a Rojo project file.</p>
+  </div>
+  <div class="btn-row">
+    <a class="btn" href="{{ url_for('pages.builder') }}">Edit selection</a>
+    <form method="post" action="{{ url_for('api.download') }}" id="zip-form" style="display:inline">
+      <input type="hidden" name="config" value="{{ config_json }}">
+      <button class="btn btn-primary" type="submit">Download .zip</button>
+    </form>
+  </div>
+</div>
+
+<div class="split">
+  <div>
+    <div class="card">
+      <h3>Files</h3>
+      <div id="file-list">
+        {% for script in scripts %}
+          <button type="button" class="btn btn-sm" style="width:100%; justify-content:flex-start; margin-bottom:6px"
+                  data-file-target="file-{{ loop.index }}">
+            <span class="pill {% if script.script_type == 'server' %}accent{% elif script.script_type == 'client' %}mint{% else %}violet{% endif %}">{{ script.script_type }}</span>
+            <span class="mono small">{{ script.path.split('/')[-1] }}</span>
+          </button>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>Included features</h3>
+      {% for entry in config.features %}
+        <div class="small faint mono">{{ entry.id }}</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    {% for script in scripts %}
+      <div class="card" id="file-{{ loop.index }}" style="margin-bottom:14px">
+        <div class="panel-title">
+          <div>
+            <h3 class="mono small" style="margin:0">{{ script.path }}</h3>
+            <span class="faint small">from {{ script.name }}</span>
+          </div>
+          <button class="btn btn-sm" data-copy="#code-{{ loop.index }}">Copy</button>
+        </div>
+        <pre class="code" id="code-{{ loop.index }}">{{ script.code }}</pre>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/highlight.js') }}"></script>
+<script>
+  RF.highlightAll(".code");
+  RF.attachCopyButtons();
+  document.querySelectorAll("[data-file-target]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      document.getElementById(button.dataset.fileTarget).scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+</script>
+{% endblock %}

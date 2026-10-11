@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Feature builder - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="eyebrow">Step 1 of 2</div>
+  <h1>Feature builder</h1>
+  <p class="lede">Tick what you want, tune the numbers, then generate. Nothing is sent anywhere - the code is produced
+    by this server and shown straight back to you.</p>
+</div>
+
+<form id="builder-form" method="post" action="{{ url_for('pages.builder_result') }}">
+  <div class="split">
+    <!-- ------------------------------------------------------- left column -->
+    <div>
+      <div class="card">
+        <label for="project_name">Project name</label>
+        <input type="text" id="project_name" name="project_name" value="My Roblox Project" maxlength="60">
+        <div class="hint faint small" style="margin-top:6px">Used for the folders in your download.</div>
+      </div>
+
+      <div class="card" style="margin-top:14px; position:sticky; top:80px;">
+        <div class="panel-title"><h3>Selection</h3><span class="pill accent" id="count-pill">0 picked</span></div>
+        <div id="selection-list" class="small muted">Nothing picked yet. Try <strong>Sprint</strong>,
+          <strong>Collectable coins</strong> and <strong>Leaderstats + saving</strong> together -
+          coins pay into the leaderboard automatically.</div>
+        <hr class="divider" style="margin:14px 0">
+        <div class="btn-row">
+          <button type="submit" class="btn btn-primary" id="generate-btn">Generate scripts</button>
+          <button type="button" class="btn" id="preview-btn" disabled>Quick preview</button>
+        </div>
+        <div class="btn-row" style="margin-top:9px">
+          <button type="button" class="btn btn-sm" id="preset-starter">Starter game</button>
+          <button type="button" class="btn btn-sm" id="preset-obby">Obby</button>
+          <button type="button" class="btn btn-sm" id="preset-sim">Simulator</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="clear-all">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------ right column -->
+    <div>
+      <div id="catalogue">
+        {% for group in catalogue %}
+          <div class="cat-heading">{{ group.category }}</div>
+          {% for feature in group.features %}
+            <div class="feature" data-feature-id="{{ feature.id }}" data-category="{{ group.category }}">
+              <label class="feature-head">
+                <input type="checkbox" class="feature-toggle" name="features" value="{{ feature.id }}"
+                       {% if feature.id in preselected %}checked{% endif %}>
+                <span>
+                  <span class="title">{{ feature.name }}</span><br>
+                  <span class="summary">{{ feature.summary }}</span>
+                </span>
+                <span class="chev" title="Show settings">&#9662;</span>
+              </label>
+              <div class="feature-body">
+                {% if feature.params %}
+                  <div class="grid grid-2" style="gap:12px">
+                    {% for param in feature.params %}
+                      <div class="field">
+                        <label for="param_{{ feature.id }}_{{ param.key }}">{{ param.label }}</label>
+                        {% if param.kind == 'bool' %}
+                          <div class="check">
+                            <input type="checkbox" id="param_{{ feature.id }}_{{ param.key }}"
+                                   name="param_{{ feature.id }}_{{ param.key }}"
+                                   {% if param.default %}checked{% endif %}>
+                            <label for="param_{{ feature.id }}_{{ param.key }}" class="small">Enabled</label>
+                          </div>
+                        {% elif param.kind == 'select' %}
+                          <select id="param_{{ feature.id }}_{{ param.key }}"
+                                  name="param_{{ feature.id }}_{{ param.key }}">
+                            {% for option in param.options %}
+                              <option value="{{ option.value }}" {% if option.value == param.default %}selected{% endif %}>{{ option.label }}</option>
+                            {% endfor %}
+                          </select>
+                        {% elif param.kind == 'number' %}
+                          <input type="number" id="param_{{ feature.id }}_{{ param.key }}"
+                                 name="param_{{ feature.id }}_{{ param.key }}" value="{{ param.default }}"
+                                 {% if param.minimum is not none %}min="{{ param.minimum }}"{% endif %}
+                                 {% if param.maximum is not none %}max="{{ param.maximum }}"{% endif %}
+                                 {% if param.step %}step="{{ param.step }}"{% endif %}>
+                        {% else %}
+                          <input type="text" id="param_{{ feature.id }}_{{ param.key }}"
+                                 name="param_{{ feature.id }}_{{ param.key }}" value="{{ param.default }}">
+                        {% endif %}
+                        {% if param.help %}<div class="hint">{{ param.help }}</div>{% endif %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="small faint" style="margin:0">No settings - just tick it and go.</p>
+                {% endif %}
+                {% if feature.notes %}
+                  <div class="divider" style="margin:12px 0"></div>
+                  {% for note in feature.notes %}
+                    <div class="small faint">&#8226; {{ note }}</div>
+                  {% endfor %}
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</form>
+
+<div class="card hidden" id="preview-card" style="margin-top:18px">
+  <div class="panel-title">
+    <h3>Quick preview</h3>
+    <span class="pill" id="preview-meta"></span>
+  </div>
+  <div class="code-wrap">
+    <pre class="code" id="preview-code"></pre>
+    <div class="code-actions">
+      <button class="btn btn-sm" data-copy="#preview-code">Copy</button>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-3" style="margin-top:22px">
+  <div class="card">
+    <h3>Where do these go?</h3>
+    <p class="small"><code>.server.luau</code> &rarr; <strong>ServerScriptService</strong><br>
+      <code>.client.luau</code> &rarr; <strong>StarterPlayerScripts</strong><br>
+      <code>.luau</code> in Shared &rarr; <strong>ReplicatedStorage</strong></p>
+  </div>
+  <div class="card">
+    <h3>Before you test</h3>
+    <p class="small">Turn on <em>Enable Studio Access to API Services</em> in Game Settings &rarr; Security,
+      otherwise DataStores silently refuse to save in Studio.</p>
+  </div>
+  <div class="card">
+    <h3>Tagging parts</h3>
+    <p class="small">Most world features look for a tag (KillBrick, Coin, SpeedPad). Use the Studio
+      <em>Tag Editor</em> - or just rename the part, the scripts accept both.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/builder.js') }}"></script>
+{% endblock %}
