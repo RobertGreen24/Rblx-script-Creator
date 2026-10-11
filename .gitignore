@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Database / generated files
+instance/
+*.db
+*.sqlite
+*.sqlite3
+*.zip
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

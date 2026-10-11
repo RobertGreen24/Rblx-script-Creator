@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project['name'] }} - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head spread">
+  <div>
+    <div class="eyebrow">{{ project['source'] }} project &middot; updated {{ project['updated_at']|timeago }}</div>
+    <h1>{{ project['name'] }}</h1>
+    {% if project['description'] %}<p class="lede">{{ project['description'] }}</p>{% endif %}
+  </div>
+  <div class="btn-row">
+    <a class="btn" href="{{ url_for('pages.projects') }}">All projects</a>
+    <a class="btn btn-primary" href="{{ url_for('pages.editor', project=project['id']) }}">Open in editor</a>
+    <form method="post" action="{{ url_for('pages.project_delete', project_id=project['id']) }}" style="display:inline"
+          onsubmit="return confirm('Delete this project?')">
+      <button class="btn btn-danger" type="submit">Delete</button>
+    </form>
+  </div>
+</div>
+
+<div class="code-wrap">
+  <pre class="code" id="project-code" style="max-height:none">{{ project['code'] }}</pre>
+  <div class="code-actions">
+    <button class="btn btn-sm" data-copy="#project-code">Copy</button>
+    <a class="btn btn-sm" download="{{ project['name']|replace(' ', '_') }}.luau"
+       href="data:text/plain;charset=utf-8,{{ project['code']|urlencode }}">Download</a>
+  </div>
+</div>
+
+{% if project['config'] and project['config'] != '{}' %}
+  <div class="card" style="margin-top:16px">
+    <h3>Builder configuration</h3>
+    <p class="small">This project was generated with the feature builder - keep this JSON if you want to rebuild it.</p>
+    <pre class="code" style="max-height:280px">{{ project['config']|json_pretty }}</pre>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/highlight.js') }}"></script>
+<script>RF.highlightAll(".code");</script>
+{% endblock %}

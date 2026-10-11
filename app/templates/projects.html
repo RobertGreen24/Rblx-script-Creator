@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}My projects - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head spread">
+  <div>
+    <div class="eyebrow">Workspace</div>
+    <h1>My projects</h1>
+    <p class="lede">Everything you have saved here. Scripts made with the builder keep their configuration, so you can
+      reopen and rebuild them.</p>
+  </div>
+  <div class="btn-row">
+    <a class="btn" href="{{ url_for('pages.builder') }}">New from builder</a>
+    <a class="btn btn-primary" href="{{ url_for('pages.editor') }}">Blank script</a>
+  </div>
+</div>
+
+{% if projects %}
+  <div class="grid grid-2">
+    {% for project in projects %}
+      <div class="card">
+        <div class="spread" style="margin-bottom:6px">
+          <h3 style="margin:0">{{ project['name'] }}</h3>
+          <div class="btn-row">
+            {% if project['starred'] %}<span class="pill amber">starred</span>{% endif %}
+            <span class="pill {% if project['script_type'] == 'client' %}mint{% elif project['script_type'] == 'module' %}violet{% else %}accent{% endif %}">{{ project['script_type'] }}</span>
+          </div>
+        </div>
+        {% if project['description'] %}<p class="small">{{ project['description'] }}</p>{% endif %}
+        <pre class="code" style="max-height:150px">{{ project['code']|shortcode }}</pre>
+        <div class="spread" style="margin-top:12px">
+          <span class="faint small">{{ project['source'] }} &middot; updated {{ project['updated_at']|timeago }}</span>
+          <div class="btn-row">
+            <a class="btn btn-sm" href="{{ url_for('pages.project_view', project_id=project['id']) }}">View</a>
+            <a class="btn btn-sm" href="{{ url_for('pages.editor', project=project['id']) }}">Edit</a>
+            <button class="btn btn-sm" data-star="{{ project['id'] }}" data-starred="{{ project['starred'] }}">
+              {% if project['starred'] %}Unstar{% else %}Star{% endif %}
+            </button>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <h3>No saved projects yet</h3>
+    <p>Generate something in the builder or write a script in the editor and hit save - it will show up here.</p>
+    <div class="btn-row" style="justify-content:center">
+      <a class="btn btn-primary" href="{{ url_for('pages.builder') }}">Open the builder</a>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/highlight.js') }}"></script>
+<script>
+  RF.highlightAll(".code");
+  document.querySelectorAll("[data-star]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var starred = button.dataset.starred === "1" || button.dataset.starred === "true";
+      RF.request("/api/projects/" + button.dataset.star, {
+        method: "PATCH",
+        body: { starred: !starred }
+      }).then(function (res) {
+        if (res.ok) {
+          RF.toast(starred ? "Unstarred." : "Starred - it will sit at the top.");
+          setTimeout(function () { location.reload(); }, 600);
+        } else {
+          RF.toast(res.error || "Could not update that project.", "error");
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}

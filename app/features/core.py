@@ -1,0 +1,403 @@
+"""Core types + generation engine for the drag-and-drop feature builder."""
+
+from __future__ import annotations
+
+import io
+import json
+import zipfile
+from dataclasses import dataclass, field
+from typing import Any, Callable, Iterable
+
+# --------------------------------------------------------------------------- #
+#  Types
+# --------------------------------------------------------------------------- #
+
+SCRIPT_TARGETS = {
+    "server": "ServerScriptService",
+    "client": "StarterPlayerScripts",
+    "module": "ReplicatedStorage",
+}
+
+
+@dataclass(frozen=True)
+class Param:
+    """A single configurable knob on a feature."""
+
+    key: str
+    label: str
+    kind: str = "text"  # text | number | bool | select
+    default: Any = ""
+    options: tuple[tuple[str, str], ...] = ()  # (value, label) pairs for selects
+    help: str = ""
+    minimum: float | None = None
+    maximum: float | None = None
+    step: float | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "key": self.key,
+            "label": self.label,
+            "kind": self.kind,
+            "default": self.default,
+            "options": [{"value": v, "label": l} for v, l in self.options],
+            "help": self.help,
+            "min": self.minimum,
+            "max": self.maximum,
+            "step": self.step,
+        }
+
+
+@dataclass(frozen=True)
+class Script:
+    """A generated file, already destined for a Roblox service."""
+
+    path: str  # e.g. "ServerScriptService/Features/Sprint_Server.luau"
+    script_type: str  # server | client | module
+    code: str
+
+
+@dataclass(frozen=True)
+class Feature:
+    id: str
+    name: str
+    category: str
+    summary: str
+    params: tuple[Param, ...] = ()
+    notes: tuple[str, ...] = ()
+    generate: Callable[[dict, dict], list[Script]] = field(default=None)  # type: ignore[assignment]
+
+    # -- helpers ----------------------------------------------------------- #
+    def default_params(self) -> dict:
+        return {p.key: p.default for p in self.params}
+
+    def coerce(self, raw: dict | None) -> dict:
+        """Turn JSON/form input into well-typed parameter values."""
+        raw = raw or {}
+        out: dict = {}
+        for param in self.params:
+            value = raw.get(param.key, param.default)
+            kind = param.kind
+            if kind == "number":
+                try:
+                    value = float(value)
+                except (TypeError, ValueError):
+                    value = float(param.default or 0)
+                if param.step and float(param.step).is_integer():
+                    value = int(value)
+                if param.minimum is not None:
+                    value = max(value, param.minimum)
+                if param.maximum is not None:
+                    value = min(value, param.maximum)
+            elif kind == "bool":
+                if isinstance(value, str):
+                    value = value.strip().lower() in ("1", "true", "yes", "on")
+                else:
+                    value = bool(value)
+            elif kind == "select":
+                allowed = [v for v, _ in param.options]
+                if str(value) not in allowed:
+                    value = param.default
+                value = str(value)
+            else:
+                value = str(value)
+            out[param.key] = value
+        return out
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "category": self.category,
+            "summary": self.summary,
+            "notes": list(self.notes),
+            "params": [p.to_dict() for p in self.params],
+        }
+
+
+# --------------------------------------------------------------------------- #
+#  Formatting helpers used by the catalogue
+# --------------------------------------------------------------------------- #
+
+
+def num(value: Any, fallback: float = 0) -> float:
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return fallback if value != value else value  # NaN guard
+
+
+def lint(value: Any, fallback: float = 0) -> float:
+    """Format a number as Luau source (drops trailing .0 for whole numbers)."""
+    value = num(value, fallback)
+    if float(value).is_integer():
+        return str(int(value))
+    return repr(round(value, 4))
+
+
+def q(value: Any) -> str:
+    """Escape a Python string for use inside a Luau double-quoted string."""
+    text = str(value)
+    text = text.replace("\\", "\\\\").replace('"', '\\"')
+    text = text.replace("\n", "\\n").replace("\r", "")
+    return text
+
+
+def lua_bool(value: Any) -> str:
+    return "true" if value else "false"
+
+
+def lua_list(values: Iterable[str]) -> str:
+    items = ", ".join(f'"{q(v)}"' for v in values if str(v).strip())
+    return items or ""
+
+
+def header(title: str, target: str, extra: str = "") -> str:
+    """Standard generated-file banner."""
+    lines = [
+        "--[[",
+        f"\t{title}",
+        "",
+        "\tGenerated by RobloxForge - https://github.com/RobertGreen24/ProjectX",
+        f"\tPlace this file in: {target}",
+    ]
+    if extra:
+        lines += ["", f"\t{extra}"]
+    lines += ["--]]", "", ""]
+    return "\n".join(lines)
+
+
+def slugify(text: str, fallback: str = "Script") -> str:
+    keep = [c if (c.isalnum() or c == "_") else "_" for c in str(text).strip()]
+    cleaned = "".join(keep).strip("_")
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
+    return cleaned or fallback
+
+
+# --------------------------------------------------------------------------- #
+#  Build pipeline
+# --------------------------------------------------------------------------- #
+
+STATS_MODULE_PATH = "ReplicatedStorage/Shared/StatsAPI.luau"
+STATS_BOOTSTRAP_PATH = "ServerScriptService/Bootstrap/StatsBootstrap.server.luau"
+
+
+def normalise_config(config: dict | None) -> dict:
+    """Accept either {"features": [...]} or a bare list and tidy it up."""
+    if config is None:
+        return {"features": []}
+    if isinstance(config, list):
+        return {"features": config}
+    features = config.get("features", config.get("selected", []))
+    clean = []
+    for entry in features or []:
+        if isinstance(entry, str):
+            clean.append({"id": entry, "params": {}})
+        elif isinstance(entry, dict) and entry.get("id"):
+            clean.append({"id": str(entry["id"]), "params": entry.get("params") or {}})
+    return {**config, "features": clean}
+
+
+def build_scripts(config: dict | None) -> list[dict]:
+    """Generate every script for a builder configuration.
+
+    Returns a list of dicts: name, path, script_type, code, feature_id.
+    """
+    from .catalog import FEATURES_BY_ID, STATS_USERS, build_stats_module, build_stats_bootstrap
+
+    cfg = normalise_config(config)
+    ctx: dict = {"project": cfg.get("project_name") or "RobloxForge Project"}
+
+    generated: list[dict] = []
+    used_ids: list[str] = []
+
+    for entry in cfg["features"]:
+        feature = FEATURES_BY_ID.get(entry["id"])
+        if feature is None or feature.generate is None:
+            continue
+        used_ids.append(feature.id)
+        raw = entry.get("params") or {}
+        params = feature.coerce(raw)
+        for script in feature.generate(params, ctx):
+            generated.append(
+                {
+                    "name": feature.name,
+                    "feature_id": feature.id,
+                    "path": script.path,
+                    "script_type": script.script_type,
+                    "code": script.code,
+                }
+            )
+
+    # Shared stats plumbing is added once, in front of everything else.
+    stats_users = [fid for fid in used_ids if fid in STATS_USERS]
+    if stats_users:
+        settings = _stats_settings(cfg, stats_users)
+        module_code = build_stats_module(settings)
+        bootstrap_code = build_stats_bootstrap(settings)
+        generated.insert(
+            0,
+            {
+                "name": "Player stats + saving",
+                "feature_id": "stats_core",
+                "path": STATS_MODULE_PATH,
+                "script_type": "module",
+                "code": module_code,
+            },
+        )
+        generated.insert(
+            1,
+            {
+                "name": "Player stats + saving",
+                "feature_id": "stats_core",
+                "path": STATS_BOOTSTRAP_PATH,
+                "script_type": "server",
+                "code": bootstrap_code,
+            },
+        )
+
+    seen: set[str] = set()
+    unique = []
+    for script in generated:
+        if script["path"] in seen:
+            continue
+        seen.add(script["path"])
+        unique.append(script)
+    return unique
+
+
+def _stats_settings(cfg: dict, stats_users: list[str]) -> dict:
+    """Work out which leaderboard stats to create, from the picked features."""
+    from .catalog import FEATURES_BY_ID
+
+    settings = {"stat": "Points", "currency": "Cash", "autosave": 120, "start_value": 0}
+    if "leaderstats" in stats_users:
+        entry = next(
+            (e for e in cfg["features"] if e["id"] == "leaderstats"), {"params": {}}
+        )
+        params = FEATURES_BY_ID["leaderstats"].coerce(entry.get("params"))
+        settings.update(
+            {
+                "stat": params["stat_name"] or "Points",
+                "currency": params["currency_name"] or "Cash",
+                "autosave": int(num(params["autosave"], 120)),
+                "start_value": int(num(params["start_value"], 0)),
+            }
+        )
+    return settings
+
+
+def build_zip(config: dict | None) -> bytes:
+    """Package the generated scripts as a Rojo-friendly .zip archive."""
+    cfg = normalise_config(config)
+    scripts = build_scripts(cfg)
+    project_name = slugify(cfg.get("project_name") or "RobloxForgeProject", "RobloxForgeProject")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for script in scripts:
+            archive.writestr(f"{project_name}/{script['path']}", script["code"])
+
+        archive.writestr(f"{project_name}/default.project.json", _rojo_project(cfg))
+        archive.writestr(f"{project_name}/README.md", build_readme(cfg, scripts))
+
+    return buffer.getvalue()
+
+
+def _rojo_project(cfg: dict) -> str:
+    """A default.project.json so `rojo build` / `rojo serve` just works."""
+    data = {
+        "name": cfg.get("project_name") or "RobloxForgeProject",
+        "tree": {
+            "$className": "DataModel",
+            "ReplicatedStorage": {"Shared": {"$path": "ReplicatedStorage/Shared"}},
+            "ServerScriptService": {"$path": "ServerScriptService"},
+            "StarterPlayer": {
+                "$className": "StarterPlayer",
+                "StarterPlayerScripts": {"$path": "StarterPlayer/StarterPlayerScripts"},
+            },
+        },
+    }
+    return json.dumps(data, indent=2) + "\n"
+
+
+def build_readme(cfg: dict, scripts: list[dict]) -> str:
+    from .catalog import FEATURES_BY_ID
+
+    lines = [
+        f"# {cfg.get('project_name') or 'RobloxForge project'}",
+        "",
+        "Generated with RobloxForge.",
+        "",
+        "## What's inside",
+        "",
+    ]
+    for entry in cfg["features"]:
+        feature = FEATURES_BY_ID.get(entry["id"])
+        if feature:
+            lines.append(f"- **{feature.name}** - {feature.summary}")
+
+    lines += ["", "## Files", ""]
+    for script in scripts:
+        lines.append(f"- `{script['path']}`")
+
+    notes = []
+    for entry in cfg["features"]:
+        feature = FEATURES_BY_ID.get(entry["id"])
+        if feature and feature.notes:
+            notes.append(f"### {feature.name}")
+            notes += [f"- {note}" for note in feature.notes]
+            notes.append("")
+    if notes:
+        lines += ["", "## Setup notes", ""] + notes
+
+    lines += [
+        "",
+        "## Installing",
+        "",
+        "**Option A - Rojo (recommended).** Install [Rojo](https://rojo.space), then run",
+        "`rojo serve` in this folder and connect from the Roblox Studio plugin.",
+        "",
+        "**Option B - by hand.** Create the folders shown in each file's path inside",
+        "Studio and paste the code into the matching Script / LocalScript / ModuleScript.",
+        "`.server.luau` files become `Script`s, `.client.luau` files become `LocalScript`s",
+        "and everything under `ReplicatedStorage/Shared` becomes a `ModuleScript`.",
+        "",
+        "> Testing tip: play in Studio with `Test > Start Server + 1 Player`.",
+        "> DataStores do not save in Studio unless *Enable Studio Access to API Services*",
+        "> is ticked in Game Settings > Security.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def preview_code(config: dict | None) -> str:
+    """A single concatenated file, handy for a quick read-through."""
+    scripts = build_scripts(config)
+    if not scripts:
+        return "-- Nothing selected yet. Pick a few features and hit Generate."
+
+    parts = [
+        "--[[",
+        "\tRobloxForge - combined preview of every generated script.",
+        f"\t{len(scripts)} file(s). Split them up before pasting into Studio:",
+        "\tfile paths are printed above each section.",
+        "--]]",
+    ]
+    for script in scripts:
+        bar = "=" * 74
+        parts.append(f"\n\n--{bar}\n-- FILE: {script['path']}  [{script['script_type']}]\n--{bar}\n")
+        parts.append(script["code"].rstrip())
+    return "\n".join(parts) + "\n"
+
+
+def catalogue() -> list[dict]:
+    from .catalog import ALL_FEATURES, CATEGORIES
+
+    grouped = []
+    for category in CATEGORIES:
+        items = [f.to_dict() for f in ALL_FEATURES if f.category == category]
+        if items:
+            grouped.append({"category": category, "features": items})
+    return grouped

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Snippet library - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="eyebrow">Copy, paste, tweak</div>
+  <h1>Snippet library</h1>
+  <p class="lede">Battle-tested patterns for the things every Roblox project needs. Drop them into a script and
+    adjust the IDs and numbers to fit your game.</p>
+</div>
+
+<form method="get" class="card tight" style="margin-bottom:16px">
+  <div class="grid" style="grid-template-columns: minmax(0,1fr) minmax(0,220px) auto; align-items:end; gap:12px">
+    <div>
+      <label for="q">Search</label>
+      <input type="search" id="q" name="q" value="{{ query }}" placeholder="datastore, remote, ui, timer...">
+    </div>
+    <div>
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        <option value="">All categories</option>
+        {% for category in categories %}
+          <option value="{{ category }}" {% if category == active_category %}selected{% endif %}>{{ category }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">Filter</button>
+      <a class="btn btn-ghost" href="{{ url_for('pages.snippets') }}">Reset</a>
+    </div>
+  </div>
+</form>
+
+<div class="spread" style="margin-bottom:12px">
+  <span class="small faint">{{ snippets|length }} snippet(s){% if query %} matching "{{ query }}"{% endif %}</span>
+  <button class="btn btn-sm" id="toggle-save-form">+ Add your own snippet</button>
+</div>
+
+<div class="card hidden" id="save-form" style="margin-bottom:16px">
+  <h3>Save a snippet</h3>
+  <p class="small">Stored in this app's local database so you can find it again later.</p>
+  <div class="grid grid-2">
+    <div class="field"><label for="snip-title">Title</label><input type="text" id="snip-title" placeholder="Sprint with stamina bar"></div>
+    <div class="field"><label for="snip-category">Category</label><input type="text" id="snip-category" placeholder="My snippets"></div>
+  </div>
+  <div class="field"><label for="snip-summary">Summary</label><input type="text" id="snip-summary" placeholder="One line about what it does"></div>
+  <div class="field"><label for="snip-tags">Tags</label><input type="text" id="snip-tags" placeholder="movement, ui"></div>
+  <div class="field"><label for="snip-code">Code</label><textarea id="snip-code" rows="10" spellcheck="false" class="mono" placeholder="-- Luau here"></textarea></div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="save-snippet-btn">Save snippet</button>
+    <button class="btn btn-ghost" id="cancel-snippet-btn">Cancel</button>
+  </div>
+</div>
+
+<div class="grid" style="gap:10px">
+  {% for snippet in snippets %}
+    <details class="snippet">
+      <summary>
+        <span>{{ snippet['title'] }}</span>
+        {% if not snippet['builtin'] %}<span class="pill amber">yours</span>{% endif %}
+        <span class="pill">{{ snippet['category'] }}</span>
+        <span class="summary-text">{{ snippet['summary'] }}</span>
+      </summary>
+      <div class="snippet-body">
+        <div class="spread" style="margin-bottom:10px">
+          <div class="tag-list">
+            <span class="pill {% if snippet['script_type'] == 'server' %}accent{% elif snippet['script_type'] == 'client' %}mint{% else %}violet{% endif %}">{{ snippet['script_type'] }}</span>
+            {% for tag in (snippet['tags'] or '').split(',') if tag %}<span class="pill">{{ tag }}</span>{% endfor %}
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-sm" data-copy="#snip-code-{{ snippet['id'] }}">Copy</button>
+            <a class="btn btn-sm" href="{{ url_for('pages.editor') }}">Open editor</a>
+            {% if not snippet['builtin'] %}
+              <button class="btn btn-sm btn-danger" data-delete-snippet="{{ snippet['id'] }}">Delete</button>
+            {% endif %}
+          </div>
+        </div>
+        <pre class="code" id="snip-code-{{ snippet['id'] }}" style="max-height:none">{{ snippet['code'] }}</pre>
+      </div>
+    </details>
+  {% else %}
+    <div class="empty">No snippets matched that search. Try a broader term.</div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/highlight.js') }}"></script>
+<script src="{{ url_for('static', filename='js/snippets.js') }}"></script>
+{% endblock %}
